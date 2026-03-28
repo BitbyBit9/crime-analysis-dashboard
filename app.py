@@ -1,104 +1,138 @@
 import pandas as pd
 import streamlit as st
-from sklearn.linear_model import LinearRegression
 import numpy as np
 
-# Page config
-st.set_page_config(page_title="Crime Dashboard", layout="wide")
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.metrics import r2_score
 
-# Title
-st.title("🚔 Smart Crime Analysis & Prediction System")
-st.markdown("## 📊 Interactive Crime Intelligence Dashboard")
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="Crime AI Dashboard", layout="wide")
+
+st.title("🚔 AI Crime Intelligence System")
+st.markdown("### 🌍 Advanced Crime Analytics • ML Prediction • Interactive Dashboard")
 st.markdown("---")
 
-# Load dataset
-df = pd.read_csv("USArrests.csv")
+# ---------------- FILE UPLOAD ----------------
+st.sidebar.header("📁 Upload Dataset")
 
-# Add coordinates for map visualization
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.success("Custom dataset loaded ✅")
+else:
+    df = pd.read_csv("USArrests.csv")
+
+# ---------------- BASIC VALIDATION ----------------
+required_cols = ["Murder", "Assault", "Rape", "UrbanPop"]
+
+if not all(col in df.columns for col in required_cols):
+    st.error("Dataset must contain: Murder, Assault, Rape, UrbanPop")
+    st.stop()
+
+# ---------------- FAKE GEO (FOR MAP) ----------------
 np.random.seed(42)
 df["lat"] = np.random.uniform(25, 50, size=len(df))
 df["lon"] = np.random.uniform(-120, -70, size=len(df))
 
-# Sidebar filters
-st.sidebar.header("Filters")
+# ---------------- SIDEBAR ----------------
+st.sidebar.header("🔍 Filters")
 
-state = st.sidebar.selectbox("Select State", df["State"])
+if "State" in df.columns:
+    state = st.sidebar.selectbox("Select State", df["State"])
+    filtered = df[df["State"] == state]
+else:
+    filtered = df
 
-crime_type = st.sidebar.selectbox(
-    "Select Crime Type",
-    ["Murder", "Assault", "Rape"]
-)
+crime_type = st.sidebar.selectbox("Crime Type", ["Murder", "Assault", "Rape"])
 
-# Filter data
-filtered = df[df["State"] == state]
-
-# KPI Section
-st.subheader("📌 Key Insights")
+# ---------------- KPI ----------------
+st.subheader("📊 Key Insights")
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("Avg Murder Rate", round(df["Murder"].mean(), 2))
-col2.metric("Avg Assault Rate", round(df["Assault"].mean(), 2))
-col3.metric("Avg Rape Rate", round(df["Rape"].mean(), 2))
+col1.metric("Avg Murder", round(df["Murder"].mean(), 2))
+col2.metric("Avg Assault", round(df["Assault"].mean(), 2))
+col3.metric("Avg Rape", round(df["Rape"].mean(), 2))
 
-# Show selected state data
-st.subheader(f"📍 Crime Data for {state}")
-st.dataframe(filtered)
+# ---------------- DATA ----------------
+st.subheader("📋 Data Preview")
+st.dataframe(filtered.head())
 
-# Selected metric
-value = filtered[crime_type].values[0]
-st.metric(label=f"{crime_type} Rate in {state}", value=value)
+# ---------------- BAR CHART ----------------
+st.subheader("📊 Crime Comparison")
 
-# Layout
+crimes = ["Murder", "Assault", "Rape"]
+values = filtered[crimes].iloc[0].values
+
+chart_data = pd.DataFrame({
+    "Crime": crimes,
+    "Value": values
+})
+
+st.bar_chart(chart_data.set_index("Crime"))
+
+# ---------------- HEATMAP ----------------
+st.subheader("🔥 Crime Heatmap")
+
+df["intensity"] = df["Murder"] + df["Assault"] + df["Rape"]
+
+map_df = df.rename(columns={"lat": "latitude", "lon": "longitude"})
+st.map(map_df)
+
+# ---------------- ML MODELS ----------------
+st.subheader("🤖 Machine Learning Models")
+
+X = df[["Assault", "UrbanPop", "Rape"]]
+y = df["Murder"]
+
+lr = LinearRegression()
+dt = DecisionTreeRegressor()
+
+lr.fit(X, y)
+dt.fit(X, y)
+
+# Model accuracy
+lr_score = r2_score(y, lr.predict(X))
+dt_score = r2_score(y, dt.predict(X))
+
 col1, col2 = st.columns(2)
 
-# Chart (Streamlit native)
-with col1:
-    st.subheader("📊 Crime Comparison")
+col1.metric("Linear Regression R²", round(lr_score, 2))
+col2.metric("Decision Tree R²", round(dt_score, 2))
 
-    crimes = ["Murder", "Assault", "Rape"]
-    values = filtered[crimes].values.flatten()
+# ---------------- USER INPUT ----------------
+st.sidebar.header("🎯 Prediction Input")
 
-    chart_data = pd.DataFrame({
-        "Crime": crimes,
-        "Value": values
-    })
+assault = st.sidebar.slider("Assault", int(df["Assault"].min()), int(df["Assault"].max()))
+urban = st.sidebar.slider("UrbanPop", int(df["UrbanPop"].min()), int(df["UrbanPop"].max()))
+rape = st.sidebar.slider("Rape", int(df["Rape"].min()), int(df["Rape"].max()))
 
-    st.bar_chart(chart_data.set_index("Crime"))
+input_data = pd.DataFrame({
+    "Assault": [assault],
+    "UrbanPop": [urban],
+    "Rape": [rape]
+})
 
-# Prediction
-with col2:
-    st.subheader("🔮 Prediction Result")
+# Predictions
+lr_pred = lr.predict(input_data)[0]
+dt_pred = dt.predict(input_data)[0]
 
-    X = df[["Assault", "UrbanPop", "Rape"]]
-    y = df["Murder"]
+# ---------------- PREDICTIONS ----------------
+st.subheader("🔮 Predictions")
 
-    model = LinearRegression()
-    model.fit(X, y)
+col1, col2 = st.columns(2)
 
-    st.sidebar.header("Prediction Input")
+col1.metric("Linear Regression", round(lr_pred, 2))
+col2.metric("Decision Tree", round(dt_pred, 2))
 
-    assault = st.sidebar.slider("Assault", int(df["Assault"].min()), int(df["Assault"].max()))
-    urban = st.sidebar.slider("Urban Population", int(df["UrbanPop"].min()), int(df["UrbanPop"].max()))
-    rape = st.sidebar.slider("Rape", int(df["Rape"].min()), int(df["Rape"].max()))
+# ---------------- TOP STATES ----------------
+if "State" in df.columns:
+    st.subheader(f"🏆 Top 10 States by {crime_type}")
+    top_states = df.sort_values(by=crime_type, ascending=False).head(10)
+    st.bar_chart(top_states.set_index("State")[crime_type])
 
-    input_data = pd.DataFrame({
-        "Assault": [assault],
-        "UrbanPop": [urban],
-        "Rape": [rape]
-    })
-
-    prediction = model.predict(input_data)
-
-    st.metric("Predicted Murder Rate", round(prediction[0], 2))
-
-# Top states
-st.subheader(f"📊 Top 10 States by {crime_type}")
-
-top_states = df.sort_values(by=crime_type, ascending=False).head(10)
-st.bar_chart(top_states.set_index("State")[crime_type])
-
-# Map visualization
-st.subheader("📍 Crime Map Visualization")
-
-st.map(df[["lat", "lon"]])
+# ---------------- FOOTER ----------------
+st.markdown("---")
+st.markdown("🚀 Built with Streamlit • Machine Learning • Data Analytics")
